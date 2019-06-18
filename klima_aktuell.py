@@ -12,6 +12,7 @@ from eofs.multivariate.iris import MultivariateEof
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
+import iris.quickplot as qplt
 
 ##### PFADE DEFINIEREN ######
 path = 'JRA-55_subsets/*/*.nc'
@@ -86,40 +87,25 @@ def eof_multivar(iris_cube):
 #ano_nom_roll = ano_nom.rolling(time=21, center=True).construct('window_dim')
 #print (ano_nom_roll)
 
-data = read_data(path)
-ano_nom = daily_mean_anomalies(data,21)
+#data = read_data(path)
+#ano_nom = daily_mean_anomalies(data,21)
+
+
+ano_nom = xa.open_dataset('normierte_anomalien_subset.nc', decode_cf=True)
 iris_cube = xa_to_iris(ano_nom)
 eof,pc = eof_multivar(iris_cube)
-print (eof[0])
-#plt.plot(eof)
-import iris.quickplot as qplt
-qplt.contourf(eof[0][10])
 
 print(eof[0][10,:,:])
 
-fig = plt.figure(figsize=(12,5))
-plt.subplot(431)
-for number in range(0,11):
-    qplt.contourf(eof[0][number])
 
-#print (num)
+###### PLOTTEN 1.EOF ######
+qplt.contourf(eof[0][0])
+plt.savefig('EOF.png')
 
 
-#mslp = xa.Dataset.to_array(ano_nom_roll,'mslp') # Dataarray der normierten Anomalien
-#mslp = mslp.to_iris
-#print(mslp)
-#mslp = mslp.transpose('time', 'lat', 'lon', 'mslp', 'window_dim')
-#print(mslp)
-#eof_mslp = eof_analyse(mslp,2)
-#print(eof_mslp)
 """
 ##### PLOTTEN DER ANOMALIEN #####
-mslp_ano_plot = mslp.isel(lat=15, lon=20)
-mslp_ano_plot.plot()
-plt.show()
-
-##### ÜBERPRÜFEN #####
-print (mslp_ano)
-print (mslp)
-print (eof_mslp)
+plt.plot(ano_nom.mslp.isel(lat=15, lon=20))
+plt.title('Normierte Anomalien \n lat=15 lon=20')
+plt.savefig('Ano_nom.png')
 """

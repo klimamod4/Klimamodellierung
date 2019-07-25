@@ -2,59 +2,40 @@
 
 """
 Martha Kogler und Vanessa Seitner
+Durchführung der Analog Methode.
 """
 
 ##### PAKETE IMPORTIEREN #####
 import iris
 import xarray as xa
-from eofs.xarray import Eof
 from eofs.multivariate.iris import MultivariateEof
-import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
-import iris.quickplot as qplt
+import cloudpickle
 import datetime
 
 ##### PFADE DEFINIEREN ######
-path = 'JRA-55_subsets/*/*.nc'
+path = 'Output/Normierte_Anomalien/'
+path_save = 'Output'
 
-##### EINLESEN #####
-# Daten als DataArray einlesen, Umbennung der Variablen aus Übersichtsgründen
-#latlon voher noch einheitlich einrechnen
-def read_data(path):
-    data = xa.open_mfdataset(path, decode_cf=True) # Daten werden als xarray Dataset eingelesen
-    data = data.rename({'initial_time0_hours': 'time', 'g0_lat_1': 'lat', 'g0_lon_2': 'lon',
-                        'PRMSL_GDS0_MSL': 'mslp','RH_GDS0_ISBL':'rh','SPFH_GDS0_ISBL':'sh'}).drop(['initial_time0_encoded','initial_time0'])
-    data.coords['lon'].data = (data.coords['lon'] + 180) % 360 - 180
-    data = data.sortby(data.lon)
-    return data
+##### BERECHNETE NORMIERTE ANOMALIEN LADEN #####
+ano_nom = xa.open_dataset(path + 'normierte_anomalien_allyears.nc', decode_cf=True)
+ano_nom.coords['time'].attrs['axis'] = 'T' # time attributes = 'T' setzen
 
-##### NORMIERTE ANOMALIEN #####
-# Tägliche Mittelwerte mittels rollendem Fenster bilden, auch Anomalien und normierte Anomalien berechnen
-def daily_mean_anomalies(data, window_size):
-    # Daily Mean
-    mean = data.resample(time='1D').mean()
-    mean = mean.chunk({'time':-1})# mean.chunk(21) #{time}
-    daily_roll = mean.rolling(time=window_size,center=True).construct('window_dim') # Rollendes Fenster, 1 in Mitte, 10 Tage davor, 10 Tage danach
-    daily_mean = daily_roll.groupby('time.dayofyear').mean(dim=['window_dim', 'time'])
-    # Anomalies statt daily_roll normaler mean
-    ano = mean.groupby('time.dayofyear') - daily_mean
-    # Standard Deviation
-    std = daily_roll.groupby('time.dayofyear').std(dim=xa.ALL_DIMS)
-    # Normalize
-    ano_nom = ano.groupby('time.dayofyear')/std
-    ano_nom = ano_nom.chunk({'time': -1})
-    return ano_nom
+##### EINSTELLUNGEN FÜR ANALOG METHODE #####
+sel_year = '1961'  # Jahr für welches Analog erstellt werden soll
+year = pd.date_range(sel_year+'-01-01', sel_year+'-12-31')
+n = 5 # Anzahl der zu suchenden Analoga
+len_year = len(ano_nom.groupby('time.year')) # Länge der Zeitreihe
 
-##### XARRAY IN IRIS #####
-#def xa_to_iris(xarray_DataArray):
-#    cube_mslp = xarray_DataArray['mslp'].to_iris()
-#    cube_rh = xarray_DataArray['rh'].to_iris()
-#    cube_sh = xarray_DataArray['sh'].to_iris()
-#    cube_list = iris.cube.CubeList([cube_mslp, cube_rh, cube_sh])
-#    cube = cube_list.concatenate()#[0]
-#    return cube
-
+##### ZUM SPEICHERN VORBEREITEN #####
+out_pc = []
+out_rh = []
+out_sh = []
+out_mslp = []
+# für gefundene Analoga:
+output = np.zeros((len(ano_nom.time), n+1), dtype='datetime64[s]')
+output[:,0] = ano_nom.time # ersten Spalte sollen Tage sein (Zeitelement)
 
 ##### EOF BERECHNUNG ####
 def eof_multivar(iris_cube):
@@ -71,27 +52,7 @@ def eof_multivar(iris_cube):
     pc_list = solver.pcs(npcs=j)
     return solver, j, eof_list, pc_list
 
-##### berechnete normierte Anomalien laden #####
-ano_nom = xa.open_dataset('normierte_anomalien_subset.nc', decode_cf=True)
-ano_nom.coords['time'].attrs['axis'] = 'T' # time attributes = 'T' setzen
-
-##### Einstellungen für Analog Methode #####
-sel_year = '1960'  # Jahr für welches Analog erstellt werden soll
-year = pd.date_range(sel_year+'-01-01', sel_year+'-12-31')
-n = 5 # Anzahl der zu suchenden Analoga
-len_year = len(ano_nom.groupby('time.year')) # Länge der Zeitreihe
-
-##### Array zum Speichern des Ergebnisses vorbereiten #####
-out_pc = []
-out_rh = []
-out_sh = []
-out_mslp = []
-# für gefundene Analoga:
-output = np.zeros((len(ano_nom.time), n+1), dtype='datetime64[s]')
-output[:,0] = ano_nom.time # ersten Spalte sollen Tage sein (Zeitelement)
-
-##### Anwenden der Analog Methode #####
-
+##### ANWENDEN DER ANALOG METHODE #####
 for i, day in enumerate(year):
     # Iteration erfolgt über alle doy_window
 
@@ -103,8 +64,6 @@ for i, day in enumerate(year):
 
     # Daten die sich im definierten Fenster befinden ausschneiden
     data = ano_nom.sel(time = ano_nom.time.dt.dayofyear.isin(window))
-    #data.coords['time'].attrs['axis'] = 'T' # time attributes = 'T' setzen
-    #print(data)
     # in Iris Cube:s
     iris_cube = iris.cube.CubeList([data.mslp.to_iris(), data.rh.to_iris(), data.sh.to_iris()]).merge()
 
@@ -125,10 +84,10 @@ for i, day in enumerate(year):
     xa_pseudo_pc = xa.DataArray.from_iris(pseudo_pc).rename('ppc')
 
     # in output Array speichern
-    #out_pc.append(xa_pc)
-    #out_mslp.append(xa.DataArray.from_iris(eof_list[0]).rename('EOF_mslp'))
-    #out_rh.append(xa.DataArray.from_iris(eof_list[1]).rename('EOF_rh'))
-    #out_sh.append(xa.DataArray.from_iris(eof_list[2]).rename('EOF_sh'))
+    out_pc.append(xa_pc)
+    out_mslp.append(xa.DataArray.from_iris(eof_list[0]).rename('EOF_mslp'))
+    out_rh.append(xa.DataArray.from_iris(eof_list[1]).rename('EOF_rh'))
+    out_sh.append(xa.DataArray.from_iris(eof_list[2]).rename('EOF_sh'))
 
     # über alle jahre iterieren
     for k in range(0,len_year):
@@ -153,5 +112,15 @@ for i, day in enumerate(year):
             # Analogon im Array ablegen
             output[row][a] = analog
 
-            # bereits gefunden Minimum herausnehmen, um weitere zu finden
+            # bereits gefundenes Minimum herausnehmen, um weitere zu finden
             norm = norm.where(norm.values != norm[norm_min].values)
+
+##### SPEICHERN #####
+save = 1
+
+if save == 1:
+    cloudpickle.dump( out_rh, open( path_save + "/EOFrh_" + sel_year + ".p", "wb" ) )
+    cloudpickle.dump( out_sh, open(path_save + "/EOFsh_" + sel_year + ".p", "wb" ) )
+    cloudpickle.dump( out_mslp, open(path_save + "/EOFmslp_" + sel_year + ".p", "wb" ) )
+    cloudpickle.dump( output, open( path_save +"/Analoga_" + sel_year + ".p", "wb" ) )
+    cloudpickle.dump( out_pc, open(path_save + "/PC_" + sel_year + ".p", "wb" ) )

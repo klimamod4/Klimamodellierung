@@ -28,7 +28,7 @@ Plot des Korrelationskoeffizienten:
 korrelationskoeffizient_plot.py =>
 Output: correlation_one_year.png
 
-Eine genaue Beschreibung der Methode befindet sich in der Datei Bericht.pdf
+Eine genaue Beschreibung der Methode befindet sich in der Datei Bericht_Kogler_Seitner.pdf
 
 
 Alle nicht erwähnten Datein sind Zwischenschritte des Arbeitsprozesses und nicht auf dem aktuellen Stand.
